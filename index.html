@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Detail Extractor</title>
+
+<style>
+body{margin:0;background:#020d06;font-family:Consolas, monospace;color:#00ff88}
+.box{max-width:540px;margin:16px auto;padding:18px;border:1px solid #00ff88;border-radius:14px;background:rgba(0,30,15,.96)}
+#backend{display:flex;flex-direction:column;align-items:center;margin-bottom:22px}
+.tick-circle{width:28px;height:28px;border:2px solid #00ff88;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px}
+#backend span{font-size:11px;margin-top:6px;opacity:.85}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:22px}
+.actions button{padding:8px;border:none;border-radius:6px;background:#00ff88;color:#000;font-weight:bold}
+.upload{display:block;border:1px dashed #00ff88;border-radius:999px;padding:14px 20px;cursor:pointer;text-align:center;margin-bottom:16px}
+.upload input{display:none}
+#selected{border:1px solid #00ff88;border-radius:8px;padding:8px 12px;font-size:12px;margin-bottom:18px;display:none}
+#extractBtn{width:100%;margin-bottom:16px;padding:12px;border:none;border-radius:8px;background:#00ff88;color:#000;font-weight:bold}
+#extractBtn:disabled{opacity:.4}
+#extracting{margin-bottom:10px;padding:6px;border:1px dashed #00ff88;text-align:center;display:none}
+@keyframes dots{0%{content:""}33%{content:"."}66%{content:".."}100%{content:"..."}}
+.dots::after{content:"";animation:dots 1s infinite steps(3)}
+/* progress bar */
+#progressBox{
+  display:none;
+  border:1px solid #00ff88;
+  border-radius:6px;
+  height:10px;
+  overflow:hidden;
+  margin-bottom:16px;
+}
+#progressBar{
+  height:100%;
+  width:0%;
+  background:#00ff88;
+}
+.section{margin-top:20px;font-size:14px;text-decoration:underline}
+.grid{margin-top:10px;display:grid;gap:10px}
+.card{background:#011b10;border:1px solid #00ff8855;border-radius:10px;padding:10px 34px 10px 10px;position:relative}
+.card h4{margin:0;font-size:13px;color:#00ffaa}
+.card p{margin:6px 0 0;font-size:13px;word-break:break-word}
+.copy{position:absolute;top:8px;right:8px;width:18px;height:18px;border:1px solid #00ff88;border-radius:3px;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);padding:10px 22px;border:1px solid #00ff88;background:#011b10;color:#00ff88;border-radius:8px;display:none;z-index:999}
+</style>
+</head>
+
+<body>
+<div class="box">
+
+<div id="backend">
+  <div class="tick-circle">✔</div>
+  <span>Backend Connected</span>
+</div>
+
+<div class="actions">
+  <button onclick="location.reload()">RESET</button>
+  <button onclick="exportTXT()">EXPORT TXT</button>
+</div>
+
+<label class="upload">
+  📂 Choose Image
+  <input type="file" id="img">
+</label>
+
+<div id="selected"></div>
+
+<button id="extractBtn" onclick="extract()" disabled>EXTRACT DETAILS</button>
+
+<div id="progressBox"><div id="progressBar"></div></div>
+
+<div id="extracting">Extracting<span class="dots"></span></div>
+<div id="out"></div>
+<div id="toast">COPIED</div>
+
+</div>
+
+<script>
+const BACKEND="https://image-details.onrender.com";
+const extractBtn=document.getElementById("extractBtn");
+const extracting=document.getElementById("extracting");
+const out=document.getElementById("out");
+const img=document.getElementById("img");
+const selected=document.getElementById("selected");
+const toast=document.getElementById("toast");
+const progressBox=document.getElementById("progressBox");
+const progressBar=document.getElementById("progressBar");
+
+let exportLines=[];
+
+/* backend check */
+(async()=>{
+  try{
+    if((await fetch(BACKEND)).ok) extractBtn.disabled=false;
+  }catch{}
+})();
+
+img.onchange=()=>{
+  if(img.files[0]){
+    selected.style.display="block";
+    selected.textContent="Selected File: "+img.files[0].name;
+  }
+};
+
+function showToast(){
+  toast.style.display="block";
+  setTimeout(()=>toast.style.display="none",500);
+}
+function copyValue(v){
+  navigator.clipboard.writeText(v);
+  showToast();
+}
+function section(title){
+  out.insertAdjacentHTML("beforeend",`<div class="section">${title}</div><div class="grid"></div>`);
+}
+function makeCard(k,v){
+  const val=(v??"Not Available");
+  exportLines.push(`${k}: ${val}`);
+  return `<div class="card"><div class="copy" onclick="copyValue(\`${val}\`)">⧉</div><h4>${k}</h4><p>${val}</p></div>`;
+}
+function renderSection(title,obj){
+  if(!obj||Object.keys(obj).length===0) return;
+  section(title);
+  const g=out.querySelector(".grid:last-child");
+  let html="";
+  for(const k in obj) html+=makeCard(k,obj[k]);
+  g.innerHTML=html;
+}
+
+/* -------- EXTRACT WITH UPLOAD PROGRESS -------- */
+function extract(){
+  if(!img.files[0]) return alert("Image select karo");
+
+  out.innerHTML="";
+  exportLines=[];
+  extractBtn.disabled=true;
+  extracting.style.display="block";
+  progressBox.style.display="block";
+  progressBar.style.width="0%";
+
+  const fd=new FormData();
+  fd.append("image",img.files[0]);
+
+  const xhr=new XMLHttpRequest();
+  xhr.open("POST",BACKEND+"/upload");
+
+  xhr.upload.onprogress=e=>{
+    if(e.lengthComputable){
+      const percent=(e.loaded/e.total)*100;
+      progressBar.style.width=percent+"%";
+    }
+  };
+
+  xhr.onload=()=>{
+    progressBox.style.display="none";
+    const data=JSON.parse(xhr.responseText);
+    renderSection("🧼 Clean / Original Details",data.clean);
+    renderSection("🧠 Image Analysis",data.analysis);
+    renderSection("📦 Raw / Unknown Data",data.raw);
+    extracting.style.display="none";
+    extractBtn.disabled=false;
+  };
+
+  xhr.send(fd);
+}
+
+function exportTXT(){
+  const blob=new Blob([exportLines.join("\n")],{type:"text/plain"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="image-details.txt";
+  a.click();
+}
+</script>
+</body>
+</html>
